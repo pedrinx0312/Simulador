@@ -1,0 +1,714 @@
+/* =====================================================================
+   Simulador do Ciclo do Carbono · folha de estilo
+   1  Tokens
+   2  Tema escuro (automático e manual)
+   3  Base
+   4  Layout
+   5  Cabeçalho e números
+   6  Painéis
+   7  Botões, select e teclas
+   8  Diagrama e legenda
+   9  Processos, cenários e sliders
+   10 Gráfico e tabela
+   11 Rodapé
+   12 Janela de ajuda (F1)
+   13 Responsivo
+   14 Movimento reduzido
+   ===================================================================== */
+
+
+/* ---------- 1. Tokens (tema claro) ---------- */
+:root{
+  /* superfícies e texto: neutros com viés verde, nunca cinza puro */
+  --bg:#EDF0EA;
+  --panel:#F9FAF7;
+  --panel-2:#E3E8E1;
+  --fg:#1B2A26;
+  --muted:#4A5B55;
+  --line:#C5CEC6;
+  --line-strong:#8E9D94;
+
+  /* ação e foco */
+  --accent:#2F5D50;
+  --accent-hover:#234A3F;
+  --accent-fg:#FFFFFF;
+  --focus:#1D5FA8;
+  --overlay:rgba(16,26,23,.55);
+
+  /* setas do diagrama */
+  --flow:#93A59C;
+
+  /* formas do carbono (partículas e legenda) */
+  --c-gas:#1D7FA3;
+  --c-org:#A85B14;
+  --c-dis:#3550B5;
+  --c-fos:#3A3A40;
+
+  /* reservatórios */
+  --r-atm:#5C8CA8;
+  --r-bio:#4C8A45;
+  --r-soil:#8C6238;
+  --r-water:#2F55A4;
+  --r-fos:#55575F;
+
+  /* tipografia */
+  --font-display:'Fredoka','Trebuchet MS',Arial,sans-serif;
+  --font-body:'Nunito Sans','Segoe UI',Arial,sans-serif;
+  --fs-xs:.8125rem;
+  --fs-sm:.875rem;
+  --fs-md:1rem;
+  --fs-lg:1.125rem;
+  --fs-xl:1.5rem;
+  --fs-stat:2.125rem;
+  --fs-hero:clamp(2rem,4.6vw,3.25rem);
+
+  /* espaçamento */
+  --s-1:4px;
+  --s-2:8px;
+  --s-3:12px;
+  --s-4:16px;
+  --s-5:24px;
+  --s-6:32px;
+  --s-7:48px;
+
+  /* forma */
+  --radius-sm:6px;
+  --radius:10px;
+  --border:1px solid var(--line);
+}
+
+
+/* ---------- 2. Tema escuro ---------- */
+/* automático: segue o sistema, a menos que o tema claro tenha sido escolhido */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101A17;
+    --panel:#17251F;
+    --panel-2:#1F3029;
+    --fg:#E6EEE9;
+    --muted:#A0B5AC;
+    --line:#2C3F37;
+    --line-strong:#5E7A6D;
+    --accent:#8CCB9E;
+    --accent-hover:#A5DAB4;
+    --accent-fg:#0C1712;
+    --focus:#8DBBF2;
+    --overlay:rgba(4,10,8,.7);
+    --flow:#4E7567;
+    --c-gas:#6BCBE6;
+    --c-org:#E8A94F;
+    --c-dis:#94A9F5;
+    --c-fos:#BDBDC8;
+    --r-atm:#6DAECF;
+    --r-bio:#7FC474;
+    --r-soil:#C69A68;
+    --r-water:#7B96E0;
+    --r-fos:#A3A5AE;
+    color-scheme:dark;
+  }
+}
+/* manual: <html data-theme="dark"> vence a preferência do sistema */
+:root[data-theme="dark"]{
+  --bg:#101A17;
+  --panel:#17251F;
+  --panel-2:#1F3029;
+  --fg:#E6EEE9;
+  --muted:#A0B5AC;
+  --line:#2C3F37;
+  --line-strong:#5E7A6D;
+  --accent:#8CCB9E;
+  --accent-hover:#A5DAB4;
+  --accent-fg:#0C1712;
+  --focus:#8DBBF2;
+  --overlay:rgba(4,10,8,.7);
+  --flow:#4E7567;
+  --c-gas:#6BCBE6;
+  --c-org:#E8A94F;
+  --c-dis:#94A9F5;
+  --c-fos:#BDBDC8;
+  --r-atm:#6DAECF;
+  --r-bio:#7FC474;
+  --r-soil:#C69A68;
+  --r-water:#7B96E0;
+  --r-fos:#A3A5AE;
+  color-scheme:dark;
+}
+
+
+/* ---------- 3. Base ---------- */
+*,
+*::before,
+*::after{box-sizing:border-box}
+
+body{
+  background:var(--bg);
+  color:var(--fg);
+  font-family:var(--font-body);
+  font-size:var(--fs-md);
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  padding-block:var(--s-6) var(--s-7);
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+
+h1,
+h2{
+  font-family:var(--font-display);
+  font-weight:500;
+  text-wrap:balance;
+}
+
+p{margin:0}
+h1,h2,dl,dd,ol,ul{margin:0}
+
+canvas{display:block;width:100%}
+
+:focus-visible{
+  outline:3px solid var(--focus);
+  outline-offset:2px;
+}
+
+
+/* ---------- 4. Layout ---------- */
+.wrap{
+  max-width:1240px;
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  gap:var(--s-5);
+}
+
+/* diagrama à esquerda, controles à direita; gráfico e tabela sob o diagrama */
+.grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 380px;
+  grid-template-areas:
+    "stage side"
+    "extra side";
+  gap:var(--s-5);
+  align-items:start;
+}
+.stage{grid-area:stage}
+.side{grid-area:side}
+.extra{
+  grid-area:extra;
+  display:flex;
+  flex-direction:column;
+  gap:var(--s-5);
+  min-width:0;
+}
+
+
+/* ---------- 5. Cabeçalho e números ---------- */
+header{
+  padding-bottom:var(--s-5);
+  border-bottom:1px solid var(--line-strong);
+}
+.eyebrow{
+  font-size:var(--fs-xs);
+  font-weight:700;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--accent);
+}
+h1{
+  margin-top:var(--s-2);
+  font-size:var(--fs-hero);
+  line-height:1.08;
+}
+.lead{
+  max-width:62ch;
+  margin-top:var(--s-3);
+  font-size:var(--fs-lg);
+  color:var(--muted);
+}
+
+.stats{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:var(--s-4) var(--s-6);
+}
+.stat{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+  padding-top:var(--s-2);
+  border-top:2px solid var(--fg);
+}
+.stat b{
+  font-family:var(--font-display);
+  font-weight:500;
+  font-size:var(--fs-stat);
+  line-height:1.1;
+  font-variant-numeric:tabular-nums;
+}
+.stat span{
+  font-size:var(--fs-sm);
+  color:var(--muted);
+}
+
+
+/* ---------- 6. Painéis ---------- */
+.panel{
+  min-width:0;
+  padding:var(--s-5);
+  background:var(--panel);
+  border:var(--border);
+  border-radius:var(--radius);
+}
+h2{
+  font-size:var(--fs-xl);
+  line-height:1.2;
+}
+.hint{
+  margin-top:var(--s-1);
+  font-size:var(--fs-sm);
+  color:var(--muted);
+}
+
+
+/* ---------- 7. Botões, select e teclas ---------- */
+.toolbar{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:var(--s-2);
+  margin-bottom:var(--s-4);
+}
+.toolbar .spacer{flex:1}
+.toolbar__label{
+  margin:0;
+  font-size:var(--fs-sm);
+  color:var(--muted);
+}
+
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:40px;
+  padding:0 var(--s-4);
+  font:inherit;
+  font-size:var(--fs-sm);
+  font-weight:700;
+  color:var(--fg);
+  background:var(--panel);
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius-sm);
+  cursor:pointer;
+  transition:background-color .12s ease, border-color .12s ease;
+}
+.btn:hover{
+  background:var(--panel-2);
+  border-color:var(--fg);
+}
+.btn:active{transform:translateY(1px)}
+
+.btn.primary{
+  color:var(--accent-fg);
+  background:var(--accent);
+  border-color:var(--accent);
+}
+.btn.primary:hover{
+  background:var(--accent-hover);
+  border-color:var(--accent-hover);
+}
+
+.btn--ghost{
+  border-color:transparent;
+  background:transparent;
+}
+
+/* cenário ativo: cor invertida e marca de seleção, para não depender só da cor */
+.btn[aria-pressed="true"]{
+  color:var(--bg);
+  background:var(--fg);
+  border-color:var(--fg);
+}
+.btn[aria-pressed="true"]::before{
+  content:"✓";
+  margin-right:var(--s-2);
+}
+
+.btn:disabled,
+select:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.btn:disabled:hover{
+  background:var(--panel);
+  border-color:var(--line-strong);
+}
+.btn:disabled:active{transform:none}
+
+select{
+  min-height:40px;
+  padding:0 var(--s-3);
+  font:inherit;
+  font-size:var(--fs-sm);
+  color:var(--fg);
+  background:var(--panel);
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius-sm);
+}
+
+kbd{
+  margin-left:var(--s-2);
+  padding:1px 6px;
+  font:inherit;
+  font-size:var(--fs-xs);
+  font-weight:700;
+  color:var(--muted);
+  background:var(--panel-2);
+  border:1px solid var(--line-strong);
+  border-bottom-width:2px;
+  border-radius:4px;
+}
+.btn.primary kbd{
+  color:var(--accent-fg);
+  background:transparent;
+  border-color:currentColor;
+}
+
+
+/* ---------- 8. Diagrama e legenda ---------- */
+.canvas-wrap{width:100%}
+
+.legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:var(--s-2) var(--s-4);
+  margin:var(--s-4) 0 0;
+  padding:0;
+  list-style:none;
+  font-size:var(--fs-sm);
+  color:var(--muted);
+}
+.legend li{
+  display:flex;
+  align-items:center;
+  gap:var(--s-2);
+}
+.dot{
+  display:inline-block;
+  width:12px;
+  height:12px;
+  border-radius:50%;
+  border:1px solid var(--panel);
+}
+.dot--gas{background:var(--c-gas)}
+.dot--org{background:var(--c-org)}
+.dot--dis{background:var(--c-dis)}
+.dot--fos{background:var(--c-fos)}
+
+/* leitura em linguagem simples do que está acontecendo */
+.read{
+  margin-top:var(--s-4);
+  padding:var(--s-3) var(--s-4);
+  font-size:var(--fs-md);
+  background:var(--panel-2);
+  border-radius:var(--radius-sm);
+}
+
+
+/* ---------- 9. Processos, cenários e sliders ---------- */
+.presets{
+  display:flex;
+  flex-wrap:wrap;
+  gap:var(--s-2);
+  margin:var(--s-3) 0 var(--s-1);
+}
+.procs{
+  display:flex;
+  flex-direction:column;
+  margin-top:var(--s-3);
+}
+.proc{
+  padding-block:var(--s-4);
+  border-top:var(--border);
+}
+.proc-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:var(--s-3);
+}
+.proc-head label{
+  font-family:var(--font-display);
+  font-weight:500;
+  font-size:var(--fs-lg);
+}
+.proc-val{
+  font-weight:700;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.eq{
+  margin-top:2px;
+  font-size:var(--fs-sm);
+  color:var(--muted);
+}
+.proc-flux{
+  font-size:var(--fs-sm);
+  color:var(--muted);
+  font-variant-numeric:tabular-nums;
+}
+
+/* slider: trilho fino, marcador circular, anel de foco no marcador */
+.proc input[type="range"]{
+  -webkit-appearance:none;
+  appearance:none;
+  display:block;
+  width:100%;
+  height:32px;
+  margin:var(--s-1) 0 0;
+  background:transparent;
+  cursor:pointer;
+}
+.proc input[type="range"]:focus-visible{outline:none}
+
+.proc input[type="range"]::-webkit-slider-runnable-track{
+  height:6px;
+  background:var(--line-strong);
+  border-radius:3px;
+}
+.proc input[type="range"]::-moz-range-track{
+  height:6px;
+  background:var(--line-strong);
+  border-radius:3px;
+}
+.proc input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  box-sizing:border-box;
+  width:22px;
+  height:22px;
+  margin-top:-8px;
+  background:var(--accent);
+  border:3px solid var(--panel);
+  border-radius:50%;
+  box-shadow:0 0 0 1px var(--accent);
+}
+.proc input[type="range"]::-moz-range-thumb{
+  box-sizing:border-box;
+  width:22px;
+  height:22px;
+  background:var(--accent);
+  border:3px solid var(--panel);
+  border-radius:50%;
+  box-shadow:0 0 0 1px var(--accent);
+}
+.proc input[type="range"]:focus-visible::-webkit-slider-thumb{
+  outline:3px solid var(--focus);
+  outline-offset:2px;
+}
+.proc input[type="range"]:focus-visible::-moz-range-thumb{
+  outline:3px solid var(--focus);
+  outline-offset:2px;
+}
+.proc input[type="range"]:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+
+/* ---------- 10. Gráfico e tabela ---------- */
+.chart-wrap{margin-top:var(--s-3)}
+
+.tablewrap{
+  margin-top:var(--s-3);
+  overflow-x:auto;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:var(--fs-sm);
+  font-variant-numeric:tabular-nums;
+}
+th,
+td{
+  padding:var(--s-2) var(--s-3);
+  text-align:left;
+  border-bottom:var(--border);
+}
+th{
+  font-size:var(--fs-xs);
+  letter-spacing:.07em;
+  text-transform:uppercase;
+  color:var(--muted);
+  border-bottom-color:var(--line-strong);
+}
+.num{text-align:right}
+tbody tr:hover{background:var(--panel-2)}
+tfoot td{
+  font-weight:700;
+  border-top:1px solid var(--line-strong);
+  border-bottom:none;
+}
+
+
+/* ---------- 11. Rodapé ---------- */
+.note{
+  max-width:80ch;
+  padding-top:var(--s-4);
+  font-size:var(--fs-sm);
+  color:var(--muted);
+  border-top:1px solid var(--line-strong);
+}
+
+
+/* ---------- 12. Janela de ajuda (F1) ---------- */
+.help{
+  width:min(720px, calc(100% - 32px));
+  max-height:min(86vh, calc(100% - 32px));
+  padding:0;
+  color:var(--fg);
+  background:var(--panel);
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius);
+  overflow:hidden;
+}
+.help[open]{
+  display:flex;
+  flex-direction:column;
+}
+.help::backdrop{background:var(--overlay)}
+
+.help__bar,
+.help__foot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--s-3);
+  padding:var(--s-3) var(--s-5);
+}
+.help__bar{border-bottom:var(--border)}
+.help__foot{border-top:var(--border)}
+.help__count{
+  font-size:var(--fs-xs);
+  font-weight:700;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+
+.help__body{
+  flex:1;
+  padding:var(--s-5);
+  overflow-y:auto;
+}
+.help__body:focus{outline:none}
+.help__kicker{
+  font-size:var(--fs-xs);
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--accent);
+}
+.help__title{
+  margin-top:var(--s-1);
+  font-size:var(--fs-xl);
+  line-height:1.2;
+}
+.help__text{
+  max-width:62ch;
+  margin-top:var(--s-3);
+  font-size:var(--fs-lg);
+}
+.help__eq{
+  margin-top:var(--s-4);
+  padding:var(--s-3) var(--s-4);
+  font-size:var(--fs-lg);
+  font-weight:700;
+  background:var(--panel-2);
+  border-radius:var(--radius-sm);
+  overflow-wrap:anywhere;
+}
+.help__notes{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:var(--s-4);
+  margin-top:var(--s-5);
+  padding-top:var(--s-4);
+  border-top:var(--border);
+}
+.help__notes dt{
+  font-size:var(--fs-xs);
+  font-weight:700;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.help__notes dd{
+  margin-top:var(--s-1);
+  font-size:var(--fs-md);
+}
+
+/* indicador de passos: o passo atual fica mais largo, além de mudar de cor */
+.help__dots{
+  display:flex;
+  align-items:center;
+  gap:var(--s-2);
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+.help__dots button{
+  position:relative;
+  display:block;
+  width:10px;
+  height:10px;
+  padding:0;
+  background:transparent;
+  border:1.5px solid var(--line-strong);
+  border-radius:5px;
+  cursor:pointer;
+  transition:width .15s ease, background-color .15s ease;
+}
+.help__dots button::after{
+  content:"";
+  position:absolute;
+  inset:-10px -4px;
+}
+.help__dots button:hover{border-color:var(--fg)}
+.help__dots button[aria-current="step"]{
+  width:26px;
+  background:var(--accent);
+  border-color:var(--accent);
+}
+
+
+/* ---------- 13. Responsivo ---------- */
+@media (max-width:960px){
+  .grid{
+    grid-template-columns:minmax(0,1fr);
+    grid-template-areas:
+      "stage"
+      "side"
+      "extra";
+  }
+}
+@media (max-width:600px){
+  body{padding-block:var(--s-5) var(--s-6)}
+  .panel{padding:var(--s-4)}
+  .toolbar .spacer{display:none}
+  .help__bar,
+  .help__foot{padding:var(--s-3) var(--s-4)}
+  .help__body{padding:var(--s-4)}
+  .help__notes{grid-template-columns:minmax(0,1fr)}
+  .help__foot .btn{padding:0 var(--s-3)}
+}
+
+
+/* ---------- 14. Movimento reduzido ---------- */
+@media (prefers-reduced-motion: reduce){
+  *,
+  *::before,
+  *::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+}
