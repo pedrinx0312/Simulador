@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulador do Ciclo do Carbono</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito+Sans:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Ciclos biogeoquímicos</p>
+    <h1>Simulador do ciclo do carbono</h1>
+    <p class="lead">Acompanhe o carbono entre atmosfera, seres vivos, solo e água. Cada seta é um processo químico que você pode acelerar, frear ou desligar.</p>
+  </header>
+
+  <div class="stats" aria-label="Resumo da simulação">
+    <div class="stat"><b id="stat-year">0</b><span>anos simulados</span></div>
+    <div class="stat"><b id="stat-ppm">418</b><span>ppm de CO₂ na atmosfera</span></div>
+    <div class="stat"><b id="stat-total">7.540</b><span>GtC no total, sempre constante</span></div>
+  </div>
+
+  <div class="grid">
+    <section class="panel stage" aria-label="Palco da simulação">
+      <div class="toolbar">
+        <button class="btn primary" id="btn-play" type="button">Pausar</button>
+        <button class="btn" id="btn-reset" type="button">Reiniciar estoques</button>
+        <button class="btn" id="btn-help" type="button" aria-haspopup="dialog" aria-keyshortcuts="F1">Como funciona<kbd>F1</kbd></button>
+        <span class="spacer"></span>
+        <label for="sel-speed" class="toolbar__label">Velocidade</label>
+        <select id="sel-speed">
+          <option value="2">2 anos/s</option>
+          <option value="4" selected>4 anos/s</option>
+          <option value="10">10 anos/s</option>
+        </select>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="cv" role="img" aria-label="Diagrama animado: carbono circulando entre atmosfera, seres vivos, solo, água e combustíveis fósseis. Os valores aparecem também na tabela de estoques."></canvas>
+      </div>
+      <ul class="legend" aria-label="Legenda">
+        <li><i class="dot dot--gas"></i>CO₂ no ar</li>
+        <li><i class="dot dot--org"></i>carbono orgânico</li>
+        <li><i class="dot dot--dis"></i>carbono dissolvido</li>
+        <li><i class="dot dot--fos"></i>carbono fóssil</li>
+        <li>Seta grossa: fluxo grande. Seta tracejada: processo parado.</li>
+      </ul>
+      <p class="read" id="read" aria-live="polite"></p>
+    </section>
+
+    <aside class="panel side" aria-label="Controles dos processos">
+      <h2>Processos</h2>
+      <p class="hint">Cada controle vai de 0% a 200% da taxa natural. A queima de fósseis começa em zero.</p>
+      <div class="presets" id="presets" role="group" aria-label="Cenários prontos">
+        <button class="btn" type="button" data-preset="eq" aria-pressed="true">Equilíbrio natural</button>
+        <button class="btn" type="button" data-preset="now" aria-pressed="false">Queima atual (10 GtC/ano)</button>
+        <button class="btn" type="button" data-preset="high" aria-pressed="false">Queima intensa (25 GtC/ano)</button>
+        <button class="btn" type="button" data-preset="nophoto" aria-pressed="false">Sem fotossíntese</button>
+      </div>
+      <div class="procs" id="procs"></div>
+    </aside>
+
+    <div class="extra">
+      <section class="panel">
+        <h2>CO₂ na atmosfera ao longo do tempo</h2>
+        <p class="hint">Em ppm (partes por milhão). A linha tracejada marca o valor inicial.</p>
+        <div class="chart-wrap"><canvas id="chart" role="img" aria-label="Gráfico da concentração de CO₂ atmosférico em ppm ao longo dos anos simulados"></canvas></div>
+      </section>
+      <section class="panel">
+        <h2>Estoques de carbono</h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Reservatório</th><th class="num">Carbono (GtC)</th><th class="num">Variação</th></tr></thead>
+            <tbody id="tbody"></tbody>
+            <tfoot><tr><td>Total</td><td class="num" id="t-total">7.540</td><td class="num" id="t-dtotal">0</td></tr></tfoot>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <p class="note">Modelo didático e simplificado. GtC significa bilhões de toneladas de carbono. Os estoques e fluxos têm ordem de grandeza realista, mas as proporções são ilustrativas. Cada ponto animado representa cerca de 25 GtC trocadas.</p>
+</div>
+
+<dialog id="help" class="help" aria-labelledby="help-title">
+  <div class="help__bar">
+    <p class="help__count" id="help-count"></p>
+    <button type="button" class="btn btn--ghost" id="help-close" aria-label="Fechar a explicação">Fechar<kbd>Esc</kbd></button>
+  </div>
+  <div class="help__body" id="help-body" tabindex="-1"></div>
+  <div class="help__foot">
+    <button type="button" class="btn" id="help-prev">Anterior</button>
+    <ol class="help__dots" id="help-dots" aria-label="Passos da explicação"></ol>
+    <button type="button" class="btn primary" id="help-next">Próximo</button>
+  </div>
+</dialog>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var INIT = {atm:890, bio:550, soil:1500, water:900, fos:3700};
+  var PPM_PER_GTC = 2.13;
+  var PPM0 = INIT.atm / PPM_PER_GTC;
+  var GPP = 25, TRAVEL = 1.9;
+  var st = {atm:INIT.atm, bio:INIT.bio, soil:INIT.soil, water:INIT.water, fos:INIT.fos};
+  var year = 0, running = true, speed = 4;
+  var ctl = {photo:100, resp:100, decomp:100, ocean:100, fossil:0};
+  var flux = {};
+  var hist = [[0, PPM0]], lastH = 0;
+  var particles = [], acc = {};
+  var T = {};
+  var nf = new Intl.NumberFormat('pt-BR', {maximumFractionDigits:0});
+
+  var NAMES = {atm:'Atmosfera', bio:'Seres vivos', soil:'Solo', water:'Água', fos:'Fósseis'};
+  var SUBS = {atm:'CO₂ e CH₄ no ar', bio:'biomassa de plantas e animais', soil:'matéria orgânica e húmus', water:'CO₂ e carbonatos', fos:'carvão, petróleo e gás'};
+  var FLOWDEF = [
+    {id:'photo', ca:'gas', cb:'org', name:'Fotossíntese'},
+    {id:'resp', ca:'org', cb:'gas', name:'Respiração'},
+    {id:'death', ca:'org', cb:'org', name:'Matéria morta'},
+    {id:'decomp', ca:'org', cb:'gas', name:'Decomposição'},
+    {id:'oin', ca:'gas', cb:'dis', name:'Dissolução'},
+    {id:'oout', ca:'dis', cb:'gas', name:'Liberação'},
+    {id:'fossil', ca:'fos', cb:'gas', name:'Combustão'}
+  ];
+
+  var PROCS = [
+    {id:'photo', name:'Fotossíntese', eq:'6 CO₂ + 6 H₂O + luz → C₆H₁₂O₆ + 6 O₂', min:0, max:200, step:5, unit:'%'},
+    {id:'resp', name:'Respiração', eq:'C₆H₁₂O₆ + 6 O₂ → 6 CO₂ + 6 H₂O + energia', min:0, max:200, step:5, unit:'%'},
+    {id:'decomp', name:'Morte e decomposição', eq:'matéria orgânica + O₂ → CO₂ + H₂O', min:0, max:200, step:5, unit:'%'},
+    {id:'ocean', name:'Troca com o oceano', eq:'CO₂ + H₂O ⇌ H₂CO₃ ⇌ H⁺ + HCO₃⁻', min:0, max:200, step:5, unit:'%'},
+    {id:'fossil', name:'Queima de fósseis', eq:'CₓHᵧ + O₂ → CO₂ + H₂O + calor', min:0, max:30, step:1, unit:' GtC/ano'}
+  ];
+  var PRESETS = {
+    eq:{photo:100, resp:100, decomp:100, ocean:100, fossil:0},
+    now:{photo:100, resp:100, decomp:100, ocean:100, fossil:10},
+    high:{photo:100, resp:100, decomp:100, ocean:100, fossil:25},
+    nophoto:{photo:0, resp:100, decomp:100, ocean:100, fossil:0}
+  };
+
+  /* ---------- modelo ---------- */
+  function computeFlux(s){
+    var k = function(v){ return v / 100; };
+    return {
+      photo: 120 * k(ctl.photo) * (s.atm / INIT.atm),
+      resp: 60 * k(ctl.resp) * (s.bio / INIT.bio),
+      death: 60 * k(ctl.decomp) * (s.bio / INIT.bio),
+      decomp: 60 * k(ctl.decomp) * (s.soil / INIT.soil),
+      oin: 90 * k(ctl.ocean) * (s.atm / INIT.atm),
+      oout: 90 * k(ctl.ocean) * (s.water / INIT.water),
+      fossil: s.fos > 1 ? ctl.fossil : 0
+    };
+  }
+  function step(dt){
+    var f = computeFlux(st);
+    st.atm += dt * (f.resp + f.decomp + f.oout + f.fossil - f.photo - f.oin);
+    st.bio += dt * (f.photo - f.resp - f.death);
+    st.soil += dt * (f.death - f.decomp);
+    st.water += dt * (f.oin - f.oout);
+    st.fos = Math.max(0, st.fos - dt * f.fossil);
+    year += dt;
+    flux = f;
+  }
+
+  /* ---------- cores ---------- */
+  var THEME_KEYS = ['panel','fg','muted','line','flow','accent','c-gas','c-org','c-dis','c-fos','r-atm','r-bio','r-soil','r-water','r-fos'];
+  function readTheme(){
+    var cs = getComputedStyle(document.documentElement);
+    THEME_KEYS.forEach(function(n){ T[n] = cs.getPropertyValue('--' + n).trim(); });
+  }
+  function hx(h){
+    h = h.replace('#','');
+    if (h.length === 3) h = h.split('').map(function(c){ return c + c; }).join('');
+    return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+  }
+  function rgba(h,a){ var c = hx(h); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+  function mix(a,b,t){
+    var A = hx(a), B = hx(b);
+    return 'rgb(' + Math.round(A[0]+(B[0]-A[0])*t) + ',' + Math.round(A[1]+(B[1]-A[1])*t) + ',' + Math.round(A[2]+(B[2]-A[2])*t) + ')';
+  }
+
+  /* ---------- layout do diagrama ---------- */
+  function makeLayout(w){
+    var L;
+    if (w < 600){
+      L = {W:480, H:660, narrow:true,
+        boxes:{atm:{x:90,y:16,w:300,h:96}, bio:{x:12,y:260,w:190,h:100}, water:{x:270,y:260,w:170,h:100}, soil:{x:12,y:540,w:220,h:100}, fos:{x:258,y:540,w:210,h:100}},
+        pts:{
+          photo:[[120,112],[120,190],[60,200],[60,260]],
+          resp:[[150,260],[150,200],[190,190],[190,112]],
+          death:[[70,360],[70,450],[70,490],[70,540]],
+          decomp:[[190,540],[230,450],[260,200],[290,112]],
+          oin:[[330,112],[330,190],[340,200],[340,260]],
+          oout:[[410,260],[410,190],[400,140],[372,112]],
+          fossil:[[450,540],[470,450],[470,100],[390,64]]
+        }, labels:{}};
+    } else {
+      L = {W:960, H:620, narrow:false,
+        boxes:{atm:{x:280,y:20,w:400,h:110}, bio:{x:30,y:250,w:250,h:120}, water:{x:640,y:250,w:220,h:120}, soil:{x:230,y:470,w:300,h:120}, fos:{x:640,y:470,w:220,h:120}},
+        pts:{
+          photo:[[310,130],[310,210],[110,170],[110,250]],
+          resp:[[240,250],[240,190],[390,200],[390,130]],
+          death:[[155,370],[155,470],[160,530],[230,530]],
+          decomp:[[420,470],[420,350],[470,260],[470,130]],
+          oin:[[650,130],[650,200],[680,190],[680,250]],
+          oout:[[800,250],[800,150],[760,100],[682,100]],
+          fossil:[[860,520],[950,520],[950,60],[682,60]]
+        },
+        labels:{
+          photo:{x:170,y:168,a:'right'}, resp:{x:338,y:200,a:'left'}, death:{x:138,y:455,a:'right'},
+          decomp:{x:484,y:340,a:'left'}, oin:{x:660,y:222,a:'right'}, oout:{x:814,y:214,a:'left'}, fossil:{x:925,y:420,a:'right'}
+        }};
+    }
+    L.flows = FLOWDEF.map(function(d){ return {id:d.id, ca:d.ca, cb:d.cb, name:d.name, pts:L.pts[d.id], label:L.labels[d.id]}; });
+    L.fmap = {}; L.flows.forEach(function(f){ L.fmap[f.id] = f; });
+    return L;
+  }
+  function bez(p, t){
+    var u = 1 - t, a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
+    return [a*p[0][0]+b*p[1][0]+c*p[2][0]+d*p[3][0], a*p[0][1]+b*p[1][1]+c*p[2][1]+d*p[3][1]];
+  }
+
+  /* ---------- canvas principal ---------- */
+  var cv = $('cv'), cx = cv.getContext('2d');
+  var L = makeLayout(900), scale = 1, dpr = 1;
+  function resize(){
+    var w = cv.parentElement.clientWidth || 600;
+    L = makeLayout(w);
+    scale = w / L.W;
+    dpr = window.devicePixelRatio || 1;
+    var h = L.H * scale;
+    cv.style.height = h + 'px';
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  function rr(c,x,y,w,h,r){
+    c.beginPath(); c.moveTo(x+r,y);
+    c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r);
+    c.closePath();
+  }
+  function signed(n){
+    var r = Math.round(n);
+    if (r === 0) return '0';
+    return (r > 0 ? '+' : '−') + nf.format(Math.abs(r));
+  }
+  function draw(){
+    cx.setTransform(1,0,0,1,0,0);
+    cx.clearRect(0,0,cv.width,cv.height);
+    cx.setTransform(scale*dpr,0,0,scale*dpr,0,0);
+    var i, f, q, p, k;
+
+    // setas
+    for (i = 0; i < L.flows.length; i++){
+      f = L.flows[i]; q = flux[f.id] || 0; p = f.pts;
+      var lw = 2 + Math.min(7, q / 25);
+      var off = q < 0.5;
+      cx.globalAlpha = off ? 0.6 : 1;
+      cx.strokeStyle = T.flow; cx.fillStyle = T.flow; cx.lineWidth = off ? 2 : lw; cx.lineCap = 'round';
+      cx.setLineDash(off ? [7,7] : []);
+      cx.beginPath(); cx.moveTo(p[0][0],p[0][1]); cx.bezierCurveTo(p[1][0],p[1][1],p[2][0],p[2][1],p[3][0],p[3][1]); cx.stroke();
+      cx.setLineDash([]);
+      var e = bez(p,1), s = bez(p,0.95), ang = Math.atan2(e[1]-s[1], e[0]-s[0]), sz = 10 + lw;
+      cx.beginPath();
+      cx.moveTo(e[0] + Math.cos(ang)*2, e[1] + Math.sin(ang)*2);
+      cx.lineTo(e[0] - Math.cos(ang)*sz + Math.cos(ang+Math.PI/2)*sz*0.5, e[1] - Math.sin(ang)*sz + Math.sin(ang+Math.PI/2)*sz*0.5);
+      cx.lineTo(e[0] - Math.cos(ang)*sz + Math.cos(ang-Math.PI/2)*sz*0.5, e[1] - Math.sin(ang)*sz + Math.sin(ang-Math.PI/2)*sz*0.5);
+      cx.closePath(); cx.fill();
+      cx.globalAlpha = 1;
+    }
+
+    // caixas dos reservatórios
+    var keys = ['atm','bio','water','soil','fos'];
+    var fs = L.narrow ? 20 : 22, vs = L.narrow ? 16 : 17;
+    for (i = 0; i < keys.length; i++){
+      k = keys[i];
+      var b = L.boxes[k], col = T['r-' + k];
+      rr(cx,b.x,b.y,b.w,b.h,16); cx.fillStyle = T.panel; cx.fill();
+      var ratio = Math.max(0, Math.min(1, st[k] / (INIT[k] * 1.5)));
+      cx.save(); rr(cx,b.x,b.y,b.w,b.h,16); cx.clip();
+      cx.fillStyle = rgba(col, 0.32); cx.fillRect(b.x, b.y + b.h * (1 - ratio), b.w, b.h * ratio + 1);
+      cx.restore();
+      rr(cx,b.x,b.y,b.w,b.h,16); cx.lineWidth = 2.5; cx.strokeStyle = col; cx.stroke();
+      cx.fillStyle = T.fg; cx.textBaseline = 'alphabetic';
+      cx.font = "600 " + fs + "px 'Fredoka','Trebuchet MS',sans-serif"; cx.textAlign = 'left';
+      cx.fillText(NAMES[k], b.x + 16, b.y + 32);
+      cx.font = "700 " + vs + "px 'Nunito Sans','Segoe UI',sans-serif";
+      cx.fillText(nf.format(st[k]) + ' GtC', b.x + 16, b.y + 60);
+      cx.textAlign = 'right';
+      cx.fillText('Δ ' + signed(st[k] - INIT[k]), b.x + b.w - 16, b.y + 60);
+      if (!L.narrow){
+        cx.textAlign = 'left'; cx.fillStyle = T.muted;
+        cx.font = "400 14px 'Nunito Sans','Segoe UI',sans-serif";
+        cx.fillText(SUBS[k], b.x + 16, b.y + 92);
+      }
+    }
+
+    // rótulos dos processos
+    if (!L.narrow){
+      cx.font = "700 15px 'Nunito Sans','Segoe UI',sans-serif"; cx.fillStyle = T.fg; cx.textBaseline = 'middle';
+      for (i = 0; i < L.flows.length; i++){
+        f = L.flows[i];
+        if (!f.label) continue;
+        cx.textAlign = f.label.a;
+        cx.fillText(f.name, f.label.x, f.label.y);
+      }
+    }
+
+    // partículas de carbono
+    for (i = 0; i < particles.length; i++){
+      p = particles[i]; f = L.fmap[p.f]; if (!f) continue;
+      var a = bez(f.pts, p.t), bb = bez(f.pts, Math.min(1, p.t + 0.01));
+      var dx = bb[0]-a[0], dy = bb[1]-a[1], len = Math.hypot(dx,dy) || 1;
+      var x = a[0] + (-dy/len) * p.j, y = a[1] + (dx/len) * p.j;
+      var t = p.t, sm = t*t*(3-2*t);
+      cx.globalAlpha = Math.min(1, t*10, (1-t)*10);
+      cx.fillStyle = mix(T['c-' + f.ca], T['c-' + f.cb], sm);
+      cx.strokeStyle = T.panel; cx.lineWidth = 1.2;
+      cx.beginPath(); cx.arc(x, y, L.narrow ? 4 : 5, 0, Math.PI*2); cx.fill(); cx.stroke();
+    }
+    cx.globalAlpha = 1;
+  }
+
+  /* ---------- partículas ---------- */
+  function spawn(dt){
+    for (var i = 0; i < FLOWDEF.length; i++){
+      var id = FLOWDEF[i].id;
+      acc[id] = (acc[id] || 0) + (flux[id] || 0) * speed / GPP * dt;
+      while (acc[id] >= 1){
+        acc[id] -= 1;
+        if (particles.length < 700) particles.push({f:id, t:0, j:(Math.random()-0.5)*6});
+      }
+    }
+  }
+  function advance(dt){
+    for (var i = particles.length - 1; i >= 0; i--){
+      particles[i].t += dt / TRAVEL;
+      if (particles[i].t >= 1) particles.splice(i,1);
+    }
+  }
+  function prewarm(){
+    particles.length = 0; acc = {};
+    flux = computeFlux(st);
+    FLOWDEF.forEach(function(d){
+      var n = Math.round((flux[d.id] || 0) * speed / GPP * TRAVEL);
+      for (var i = 0; i < n; i++) particles.push({f:d.id, t:Math.random(), j:(Math.random()-0.5)*6});
+    });
+  }
+
+  /* ---------- gráfico ---------- */
+  var ch = $('chart'), cc = ch.getContext('2d');
+  function drawChart(){
+    var w = ch.parentElement.clientWidth || 400, h = 210, d = window.devicePixelRatio || 1;
+    if (ch.width !== Math.round(w*d) || ch.height !== Math.round(h*d)){
+      ch.width = Math.round(w*d); ch.height = Math.round(h*d); ch.style.height = h + 'px';
+    }
+    cc.setTransform(d,0,0,d,0,0); cc.clearRect(0,0,w,h);
+    var padL = 46, padR = 62, padT = 14, padB = 30, pw = w - padL - padR, ph = h - padT - padB;
+    var lo = PPM0, hi = PPM0, i;
+    for (i = 0; i < hist.length; i++){ lo = Math.min(lo, hist[i][1]); hi = Math.max(hi, hist[i][1]); }
+    lo -= 6; hi += 6;
+    if (hi - lo < 30){ var m = (hi + lo) / 2; lo = m - 15; hi = m + 15; }
+    var xmax = Math.max(40, year);
+    var X = function(v){ return padL + pw * v / xmax; };
+    var Y = function(v){ return padT + ph * (1 - (v - lo) / (hi - lo)); };
+    cc.font = "12px 'Nunito Sans','Segoe UI',sans-serif"; cc.textBaseline = 'middle';
+    cc.lineWidth = 1; cc.strokeStyle = T.line; cc.fillStyle = T.muted; cc.textAlign = 'right';
+    for (i = 0; i <= 3; i++){
+      var v = lo + (hi - lo) * i / 3, y = Math.round(Y(v)) + 0.5;
+      cc.beginPath(); cc.moveTo(padL, y); cc.lineTo(padL + pw, y); cc.stroke();
+      cc.fillText(String(Math.round(v)), padL - 8, y);
+    }
+    cc.textAlign = 'center';
+    for (i = 0; i <= 4; i++){
+      var xv = xmax * i / 4;
+      cc.fillText(String(Math.round(xv)), X(xv), h - 12);
+    }
+    // linha de base
+    var yb = Y(PPM0), cur = hist[hist.length-1][1], yc = Y(cur);
+    cc.setLineDash([5,5]); cc.strokeStyle = T.muted; cc.beginPath(); cc.moveTo(padL, yb); cc.lineTo(padL + pw, yb); cc.stroke(); cc.setLineDash([]);
+    // curva
+    cc.strokeStyle = T.accent; cc.lineWidth = 2.5; cc.lineJoin = 'round';
+    cc.beginPath();
+    for (i = 0; i < hist.length; i++){
+      var px = X(hist[i][0]), py = Y(hist[i][1]);
+      if (i === 0) cc.moveTo(px, py); else cc.lineTo(px, py);
+    }
+    cc.stroke();
+    cc.fillStyle = T.accent; cc.beginPath(); cc.arc(X(hist[hist.length-1][0]), yc, 4.5, 0, Math.PI*2); cc.fill();
+    // rótulos à direita
+    cc.textAlign = 'left'; cc.font = "700 13px 'Nunito Sans','Segoe UI',sans-serif";
+    cc.fillStyle = T.fg; cc.fillText(Math.round(cur) + ' ppm', padL + pw + 8, yc);
+    cc.font = "400 12px 'Nunito Sans','Segoe UI',sans-serif"; cc.fillStyle = T.muted;
+    var yl = yb; if (Math.abs(yc - yb) < 16) yl = yc <= yb ? yc + 16 : yc - 16;
+    cc.fillText('início', padL + pw + 8, yl);
+    cc.textAlign = 'right'; cc.fillText('anos', w - 4, h - 12);
+  }
+
+  /* ---------- textos e controles ---------- */
+  var tbody = $('tbody'), rows = {};
+  ['atm','bio','soil','water','fos'].forEach(function(k){
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (k === 'fos' ? 'Combustíveis fósseis' : NAMES[k]) + '</td><td class="num"></td><td class="num"></td>';
+    tbody.appendChild(tr); rows[k] = tr.children;
+  });
+  function fluxText(id){
+    var n = function(v){ return nf.format(v); };
+    if (id === 'photo') return 'Atmosfera → Seres vivos: ' + n(flux.photo) + ' GtC/ano';
+    if (id === 'resp') return 'Seres vivos → Atmosfera: ' + n(flux.resp) + ' GtC/ano';
+    if (id === 'decomp') return 'Seres vivos → Solo: ' + n(flux.death) + ' · Solo → Atmosfera: ' + n(flux.decomp);
+    if (id === 'ocean') return 'Entra na água: ' + n(flux.oin) + ' · sai: ' + n(flux.oout) + ' GtC/ano';
+    return 'Fósseis → Atmosfera: ' + n(flux.fossil) + ' GtC/ano';
+  }
+  function insight(){
+    var dA = st.atm - INIT.atm, dB = st.bio - INIT.bio, dW = st.water - INIT.water;
+    if (year < 2) return 'Escolha um cenário ou mova os controles. O carbono muda de lugar, mas a soma nunca muda.';
+    if (Math.abs(dA) < 8 && Math.abs(dB) < 8 && Math.abs(dW) < 8) return 'Equilíbrio: cada reservatório recebe tanto carbono quanto perde.';
+    var ppm = Math.abs(dA / PPM_PER_GTC);
+    if (dA > 0){
+      var s = 'A atmosfera ganhou ' + nf.format(dA) + ' GtC (+' + nf.format(ppm) + ' ppm).';
+      if (dB > 5 || dW > 5) s += ' A vegetação e o oceano já absorveram parte desse carbono.';
+      return s;
+    }
+    return 'A atmosfera perdeu ' + nf.format(-dA) + ' GtC (−' + nf.format(ppm) + ' ppm). O carbono foi para ' + (dB > dW ? 'os seres vivos' : 'a água') + '.';
+  }
+  function updateText(){
+    $('stat-year').textContent = nf.format(Math.floor(year));
+    $('stat-ppm').textContent = nf.format(st.atm / PPM_PER_GTC);
+    var total = 0, k, ks = ['atm','bio','soil','water','fos'];
+    for (var i = 0; i < ks.length; i++){
+      k = ks[i]; total += st[k];
+      rows[k][1].textContent = nf.format(st[k]);
+      rows[k][2].textContent = signed(st[k] - INIT[k]);
+    }
+    var tot0 = INIT.atm + INIT.bio + INIT.soil + INIT.water + INIT.fos;
+    $('stat-total').textContent = nf.format(total);
+    $('t-total').textContent = nf.format(total);
+    $('t-dtotal').textContent = signed(total - tot0);
+    $('read').textContent = insight();
+    PROCS.forEach(function(p){ $('flux-' + p.id).textContent = fluxText(p.id); });
+  }
+
+  var procsBox = $('procs');
+  PROCS.forEach(function(p){
+    var d = document.createElement('div'); d.className = 'proc';
+    d.innerHTML = '<div class="proc-head"><label for="rng-' + p.id + '">' + p.name + '</label><span class="proc-val" id="val-' + p.id + '"></span></div>' +
+      '<p class="eq">' + p.eq + '</p>' +
+      '<input type="range" id="rng-' + p.id + '" min="' + p.min + '" max="' + p.max + '" step="' + p.step + '" value="' + ctl[p.id] + '">' +
+      '<p class="proc-flux" id="flux-' + p.id + '"></p>';
+    procsBox.appendChild(d);
+    $('rng-' + p.id).addEventListener('input', function(e){
+      ctl[p.id] = +e.target.value; showVal(p); clearPressed(); flux = computeFlux(st); updateText();
+    });
+  });
+  function showVal(p){ $('val-' + p.id).textContent = ctl[p.id] + p.unit; }
+  function clearPressed(){ document.querySelectorAll('#presets .btn').forEach(function(b){ b.setAttribute('aria-pressed','false'); }); }
+  function setControls(o){
+    PROCS.forEach(function(p){ ctl[p.id] = o[p.id]; $('rng-' + p.id).value = o[p.id]; showVal(p); });
+  }
+  function resetState(){
+    for (var k in INIT) st[k] = INIT[k];
+    year = 0; lastH = 0; hist = [[0, PPM0]];
+    prewarm(); updateText();
+  }
+  document.querySelectorAll('#presets .btn').forEach(function(b){
+    b.addEventListener('click', function(){
+      clearPressed(); b.setAttribute('aria-pressed','true');
+      setControls(PRESETS[b.dataset.preset]); resetState();
+    });
+  });
+  $('btn-reset').addEventListener('click', resetState);
+  $('btn-play').addEventListener('click', function(){
+    running = !running; this.textContent = running ? 'Pausar' : 'Continuar';
+  });
+  $('sel-speed').addEventListener('change', function(e){ speed = +e.target.value; });
+
+  /* ---------- laço principal ---------- */
+  var last = performance.now(), frame = 0;
+  function loop(now){
+    var dt = Math.min(0.05, (now - last) / 1000); last = now; frame++;
+    if (running){
+      var sy = speed * dt;
+      while (sy > 0){ var dd = Math.min(0.1, sy); step(dd); sy -= dd; }
+      spawn(dt); advance(dt);
+      if (year - lastH >= 0.5){ hist.push([year, st.atm / PPM_PER_GTC]); lastH = year; if (hist.length > 1200) hist.shift(); }
+    } else { flux = computeFlux(st); }
+    if (frame % 30 === 1) readTheme();
+    draw();
+    if (frame % 4 === 0) drawChart();
+    if (frame % 12 === 0) updateText();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- início ---------- */
+  readTheme();
+  PROCS.forEach(showVal);
+  resize();
+  if (window.ResizeObserver) new ResizeObserver(function(){ resize(); }).observe(cv.parentElement);
+  else window.addEventListener('resize', resize);
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce){ running = false; $('btn-play').textContent = 'Continuar'; }
+  prewarm(); updateText();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ draw(); });
+  requestAnimationFrame(loop);
+})();
+</script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var help = $('help'), body = $('help-body'), count = $('help-count'), dots = $('help-dots');
+  var prev = $('help-prev'), next = $('help-next');
+  var cur = 0;
+
+  var STEPS = [
+    {kicker:'Visão geral', title:'Como ler o simulador',
+     text:'As caixas são os reservatórios onde o carbono fica armazenado: atmosfera, seres vivos, solo, água e combustíveis fósseis. As setas são os processos que levam o carbono de um reservatório para outro. Os valores estão em GtC, bilhões de toneladas de carbono.',
+     eq:'',
+     sim:'Cada ponto animado representa cerca de 25 GtC trocadas. Quanto mais grossa a seta, maior o fluxo. Seta tracejada significa processo parado. O símbolo Δ mostra quanto o reservatório mudou desde o início.',
+     tryit:'Clique em "Pausar" para congelar o diagrama e ler os números com calma.'},
+    {kicker:'Atmosfera → Seres vivos', title:'Fotossíntese',
+     text:'Plantas, algas e cianobactérias usam a energia da luz para transformar CO₂ e água em glicose. Nesse passo, o carbono do ar vira carbono orgânico, que forma o corpo dos seres vivos e alimenta a cadeia alimentar.',
+     eq:'6 CO₂ + 6 H₂O + luz → C₆H₁₂O₆ + 6 O₂',
+     sim:'Os pontos saem do ar com a cor do CO₂ e chegam aos seres vivos com a cor do carbono orgânico. O fluxo cresce quando há mais CO₂ na atmosfera.',
+     tryit:'Escolha o cenário "Sem fotossíntese" e acompanhe o CO₂ subir no gráfico.'},
+    {kicker:'Seres vivos → Atmosfera', title:'Respiração',
+     text:'Todos os seres vivos, inclusive as plantas, quebram a glicose nas células para obter energia. O carbono volta para o ar como CO₂. Em termos de matéria, é o caminho inverso da fotossíntese.',
+     eq:'C₆H₁₂O₆ + 6 O₂ → 6 CO₂ + 6 H₂O + energia',
+     sim:'Os pontos fazem o caminho contrário: saem dos seres vivos e voltam ao ar, mudando de carbono orgânico para CO₂.',
+     tryit:'Leve a respiração a 200% e veja a atmosfera ganhar carbono enquanto os seres vivos perdem.'},
+    {kicker:'Seres vivos → Solo → Atmosfera', title:'Morte e decomposição',
+     text:'Folhas, troncos e animais mortos chegam ao solo. Fungos e bactérias decompõem essa matéria orgânica e respiram. Parte do carbono fica no solo como húmus, e o restante volta ao ar como CO₂.',
+     eq:'matéria orgânica + O₂ → CO₂ + H₂O',
+     sim:'Há duas setas: a matéria morta, que vai dos seres vivos ao solo, e a decomposição, que leva carbono do solo à atmosfera. O mesmo controle ajusta as duas.',
+     tryit:'Leve o controle a 0% e veja os seres vivos acumularem carbono, porque a matéria morta deixa de chegar ao solo.'},
+    {kicker:'Atmosfera ⇄ Água', title:'Troca com o oceano',
+     text:'O CO₂ do ar se dissolve na água e forma ácido carbônico, que libera íons de hidrogênio e bicarbonato. A reação é reversível, então a água também devolve CO₂ ao ar. O sentido que predomina depende de quanto carbono há de cada lado.',
+     eq:'CO₂ + H₂O ⇌ H₂CO₃ ⇌ H⁺ + HCO₃⁻',
+     sim:'Duas setas ligam atmosfera e água: dissolução e liberação. No equilíbrio elas têm a mesma espessura. Quando a atmosfera ganha CO₂, a dissolução passa a vencer.',
+     tryit:'Escolha "Queima atual" e compare a espessura das duas setas ao longo do tempo.'},
+    {kicker:'Fósseis → Atmosfera', title:'Queima de combustíveis fósseis',
+     text:'Carvão, petróleo e gás guardam carbono capturado por seres vivos há milhões de anos. Ao serem queimados, esse carbono volta ao ar como CO₂ em poucas décadas, muito mais rápido do que os processos naturais conseguem compensar.',
+     eq:'CₓHᵧ + O₂ → CO₂ + H₂O + calor',
+     sim:'Com a queima em zero, a seta dos fósseis fica tracejada. O estoque de fósseis só diminui, e o carbono que sai dele se distribui pelos outros reservatórios.',
+     tryit:'Aplique "Queima atual (10 GtC/ano)" e depois "Queima intensa (25 GtC/ano)". Compare a curva do gráfico nos dois casos.'},
+    {kicker:'Resumo', title:'Equilíbrio e conservação',
+     text:'Em equilíbrio, cada reservatório recebe tanto carbono quanto perde, e os valores ficam estáveis. Quando você muda um processo, os outros reagem: com mais CO₂ no ar, a fotossíntese e a dissolução aumentam, mas não compensam tudo. O carbono não é criado nem destruído, só muda de lugar.',
+     eq:'',
+     sim:'A soma dos cinco reservatórios fica sempre em 7.540 GtC. Confira o total na tabela de estoques.',
+     tryit:'Combine mudanças: dobre a fotossíntese e ligue a queima de fósseis ao mesmo tempo, e veja qual efeito vence.'}
+  ];
+
+  STEPS.forEach(function(s, i){
+    var li = document.createElement('li'), b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('aria-label', 'Passo ' + (i + 1) + ': ' + s.title);
+    b.addEventListener('click', function(){ go(i); });
+    li.appendChild(b); dots.appendChild(li);
+  });
+
+  function render(){
+    var s = STEPS[cur];
+    body.innerHTML =
+      '<p class="help__kicker">' + s.kicker + '</p>' +
+      '<h2 class="help__title" id="help-title">' + s.title + '</h2>' +
+      '<p class="help__text">' + s.text + '</p>' +
+      (s.eq ? '<p class="help__eq">' + s.eq + '</p>' : '') +
+      '<dl class="help__notes"><div><dt>No simulador</dt><dd>' + s.sim + '</dd></div>' +
+      '<div><dt>Experimente</dt><dd>' + s.tryit + '</dd></div></dl>';
+    count.textContent = 'Passo ' + (cur + 1) + ' de ' + STEPS.length;
+    prev.disabled = cur === 0;
+    next.textContent = cur === STEPS.length - 1 ? 'Concluir' : 'Próximo';
+    var bs = dots.querySelectorAll('button');
+    for (var i = 0; i < bs.length; i++){
+      if (i === cur) bs[i].setAttribute('aria-current', 'step'); else bs[i].removeAttribute('aria-current');
+    }
+    body.scrollTop = 0;
+  }
+  function go(i){ cur = Math.max(0, Math.min(STEPS.length - 1, i)); render(); }
+  function openHelp(){
+    if (help.open) return;
+    cur = 0; render();
+    if (typeof help.showModal === 'function') help.showModal(); else help.setAttribute('open', '');
+    body.focus();
+  }
+  function closeHelp(){
+    if (typeof help.close === 'function') help.close(); else help.removeAttribute('open');
+  }
+
+  prev.addEventListener('click', function(){ go(cur - 1); });
+  next.addEventListener('click', function(){ if (cur === STEPS.length - 1) closeHelp(); else go(cur + 1); });
+  $('help-close').addEventListener('click', closeHelp);
+  $('btn-help').addEventListener('click', openHelp);
+  help.addEventListener('click', function(e){ if (e.target === help) closeHelp(); });
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'F1'){
+      e.preventDefault();
+      if (help.open) closeHelp(); else openHelp();
+    } else if (help.open && e.key === 'ArrowRight'){ e.preventDefault(); go(cur + 1); }
+    else if (help.open && e.key === 'ArrowLeft'){ e.preventDefault(); go(cur - 1); }
+  });
+})();
+</script>
+</body>
+</html>
